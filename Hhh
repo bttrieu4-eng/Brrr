@@ -1,40 +1,141 @@
---- XOÁ VĨNH VIỄN TẤT CẢ DATASTORE TRONG GAME NÀY
--- Dùng trong Roblox Studio, bật Game Settings → Security → Enable Studio Access to API.
--- Đặt vào ServerScriptService, nhấn Play (F5) 1 lần rồi XÓA script này ngay.
+-- ⚠️ XOÁ DỮ LIỆU VĨNH VIỄN (DataStore) – CHẨN ĐOÁN + XOÁ
+-- Dùng trong Roblox Studio, game đã Publish, bật Game Settings → Security → Enable Studio Access to API.
+-- Đặt vào ServerScriptService, nhấn Play (F5) 1 lần, xem Output để biết vướng ở đâu. Xong => XÓA script.
 
 local DSS = game:GetService("DataStoreService")
 
-local function wipeDS(name)
-	local ds = DSS:GetDataStore(name)
-	local ok, pages = pcall(function() return ds:ListKeysAsync() end)
-	if not ok then warn("List DS fail:", name, pages) return end
-	repeat
+print(("UniverseId: %s  (PlaceId: %s)"):format(game.GameId, game.PlaceId))
+
+-- ====== TÙY CHỌN: nếu ListDataStoresAsync bị chặn, điền tên DS & scope tại đây để xoá thủ công ======
+-- Ví dụ: {name = "PlayerData", scopes = {"", "Global", "Prod", "SomeScope"}}
+local FALLBACK_STORES = {
+	-- { name = "PlayerData", scopes = {""} },
+	-- { name = "InventoryData", scopes = {""} },
+}
+-- =====================================================================================================
+
+local function tryAdvance(pages)
+	local ok, err = pcall(function() pages:AdvanceToNextPageAsync() end)
+	if not ok then
+		warn("AdvanceToNextPageAsync FAILED:", err)
+	end
+	return ok
+end
+
+local function wipeStandardDataStore(storeName, scope)
+	scope = scope or ""
+	local ds = DSS:GetDataStore(storeName, scope)
+	local ok, pages = pcall(function()
+		-- prefix=nil, pageSize=nil → lấy hết
+		return ds:ListKeysAsync()
+	end)
+	if not ok then
+		warn(("[DS] Không thể liệt kê key: '%s' [scope='%s'] → %s"):format(storeName, scope, tostring(pages)))
+		return 0
+	end
+	local cnt = 0
+	while true do
 		for _, info in ipairs(pages:GetCurrentPage()) do
 			local key = info.KeyName
-			local rOk, rErr = pcall(function() ds:RemoveAsync(key) end)
-			if rOk then print("[DS] XÓA", name.."/"..key) else warn("[DS] LỖI", name, key, rErr) end
-			task.wait() -- giảm throttle
-		end
-	until pages.IsFinished or (pcall(function() pages:AdvanceToNextPageAsync() end) and false)
-end
-
-local function wipeODS(name)
-	local ods = DSS:GetOrderedDataStore(name)
-	local ok, pages = pcall(function() return ods:GetSortedAsync(false, 100, -math.huge, math.huge) end)
-	if not ok then warn("List ODS fail:", name, pages) return end
-	repeat
-		for _, item in ipairs(pages:GetCurrentPage()) do
-			local key = item.key
-			local rOk, rErr = pcall(function() ods:RemoveAsync(key) end)
-			if rOk then print("[ODS] XÓA", name.."/"..key) else warn("[ODS] LỖI", name, key, rErr) end
+			local rok, rerr = pcall(function() ds:RemoveAsync(key) end)
+			if rok then
+				cnt += 1
+				print(("[DS] ĐÃ XÓA %s [scope='%s'] / key='%s'"):format(storeName, scope, key))
+			else
+				warn(("[DS] LỖI xoá %s [scope='%s'] / key='%s' → %s"):format(storeName, scope, key, tostring(rerr)))
+			end
 			task.wait()
 		end
-	until pages.IsFinished or (pcall(function() pages:AdvanceToNextPageAsync() end) and false)
+		if pages.IsFinished then break end
+		if not tryAdvance(pages) then break end
+	end
+	return cnt
 end
 
--- Liệt kê tất cả DataStore trong experience rồi xoá sạch
-local stores = {}
-do
+local function wipeOrderedDataStore(storeName, scope)
+	scope = scope or ""
+	local ods = DSS:GetOrderedDataStore(storeName, scope)
+	local ok, pages = pcall(function()
+		-- false = tăng dần; min=-inf max=+inf để quét toàn bộ
+		return ods:GetSortedAsync(false, 100, -math.huge, math.huge)
+	end)
+	if not ok then
+		warn(("[ODS] Không thể liệt kê key: '%s' [scope='%s'] → %s"):format(storeName, scope, tostring(pages)))
+		return 0
+	end
+	local total = 0
+	while true do
+		for _, item in ipairs(pages:GetCurrentPage()) do
+			local key = item.key
+			local rok, rerr = pcall(function() ods:RemoveAsync(key) end)
+			if rok then
+				total += 1
+				print(("[ODS] ĐÃ XÓA %s [scope='%s'] / key='%s'"):format(storeName, scope, key))
+			else
+				warn(("[ODS] LỖI xoá %s [scope='%s'] / key='%s' → %s"):format(storeName, scope, key, tostring(rerr)))
+			end
+			task.wait()
+		end
+		if pages.IsFinished then break end
+		if not tryAdvance(pages) then break end
+	end
+	return total
+end
+
+local function listAllDataStores()
+	local ok, pages = pcall(function() return DSS:ListDataStoresAsync() end)
+	if not ok then
+		warn("❌ Không thể ListDataStoresAsync. Thường do CHƯA bật 'Enable Studio Access to API' hoặc game CHƯA Publish.")
+		return nil, pages
+	end
+	local names = {}
+	while true do
+		for _, info in ipairs(pages:GetCurrentPage()) do
+			table.insert(names, info.Name)
+		end
+		if pages.IsFinished then break end
+		if not tryAdvance(pages) then break end
+	end
+	return names
+end
+
+-- 1) Thử liệt kê tất cả DS trong experience
+local storeNames, listErr = listAllDataStores()
+
+if storeNames and #storeNames > 0 then
+	print("✅ Tìm thấy DataStore:", table.concat(storeNames, ", "))
+	local total = 0
+	for _, name in ipairs(storeNames) do
+		-- Quét default scope trước; nếu bạn dùng nhiều scope, thêm vào đây
+		total += wipeStandardDataStore(name, "")
+		total += wipeOrderedDataStore(name, "")
+	end
+	print(("=== HOÀN TẤT: XOÁ %d key (DS + ODS) trong toàn experience (default scope) ==="):format(total))
+elseif storeNames and #storeNames == 0 then
+	warn("⚠️ List OK nhưng KHÔNG có DataStore nào. Có thể bạn chưa từng lưu (SetAsync) dữ liệu thật trong game này.")
+else
+	-- 2) FALLBACK: Không list được DS → dùng danh sách thủ công
+	warn("⛑️ FALLBACK: dùng danh sách DS thủ công (FALLBACK_STORES).")
+	if #FALLBACK_STORES == 0 then
+		warn("👉 Hãy điền tên DataStore bạn đã dùng vào FALLBACK_STORES ở đầu script (ví dụ: 'PlayerData').")
+	else
+		local total = 0
+		for _, def in ipairs(FALLBACK_STORES) do
+			local scopes = def.scopes or {""}
+			for _, sc in ipairs(scopes) do
+				total += wipeStandardDataStore(def.name, sc)
+				total += wipeOrderedDataStore(def.name, sc)
+			end
+		end
+		print(("=== HOÀN TẤT (FALLBACK): XOÁ %d key từ danh sách thủ công ==="):format(total))
+	end
+end
+
+-- Dọn Workspace tạm thời (không vĩnh viễn, chỉ trong phiên)
+for _, obj in ipairs(workspace:GetChildren()) do
+	if not obj:IsA("Terrain") then obj:Destroy() end
+end
+print("Workspace đã dọn (tạm thời). XONG.")do
 	local ok, pages = pcall(function() return DSS:ListDataStoresAsync() end)
 	if not ok then error("Không liệt kê được DataStore. Bật 'Enable Studio Access to API' rồi thử lại.") end
 	repeat
