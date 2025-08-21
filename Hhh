@@ -1,38 +1,51 @@
--- Script xóa toàn bộ dữ liệu người chơi và xóa mọi thứ trong Workspace
--- Đặt trong ServerScriptService
+--- XOÁ VĨNH VIỄN TẤT CẢ DATASTORE TRONG GAME NÀY
+-- Dùng trong Roblox Studio, bật Game Settings → Security → Enable Studio Access to API.
+-- Đặt vào ServerScriptService, nhấn Play (F5) 1 lần rồi XÓA script này ngay.
 
-local DataStoreService = game:GetService("DataStoreService")
+local DSS = game:GetService("DataStoreService")
 
--- Thay bằng tên DataStore bạn đang dùng để lưu
-local dataStores = {"PlayerData", "InventoryData", "StatsData"} 
-
--- Xóa dữ liệu trong DataStore
-for _, storeName in ipairs(dataStores) do
-	local ds = DataStoreService:GetDataStore(storeName)
-	local pages
-	local success, err = pcall(function()
-		-- Lấy tất cả keys trong DataStore (chỉ chạy được trong Studio)
-		pages = ds:ListKeysAsync()
-	end)
-	if success and pages then
-		while true do
-			for _, key in ipairs(pages:GetCurrentPage()) do
-				ds:RemoveAsync(key.KeyName) -- Xóa dữ liệu theo key
-				print("Đã xóa dữ liệu của key:", key.KeyName)
-			end
-			if pages.IsFinished then
-				break
-			end
-			pages:AdvanceToNextPageAsync()
+local function wipeDS(name)
+	local ds = DSS:GetDataStore(name)
+	local ok, pages = pcall(function() return ds:ListKeysAsync() end)
+	if not ok then warn("List DS fail:", name, pages) return end
+	repeat
+		for _, info in ipairs(pages:GetCurrentPage()) do
+			local key = info.KeyName
+			local rOk, rErr = pcall(function() ds:RemoveAsync(key) end)
+			if rOk then print("[DS] XÓA", name.."/"..key) else warn("[DS] LỖI", name, key, rErr) end
+			task.wait() -- giảm throttle
 		end
-	end
+	until pages.IsFinished or (pcall(function() pages:AdvanceToNextPageAsync() end) and false)
 end
 
--- Xóa toàn bộ object trong Workspace
-for _, obj in ipairs(game.Workspace:GetChildren()) do
-	if not obj:IsA("Terrain") then
-		obj:Destroy()
-	end
+local function wipeODS(name)
+	local ods = DSS:GetOrderedDataStore(name)
+	local ok, pages = pcall(function() return ods:GetSortedAsync(false, 100, -math.huge, math.huge) end)
+	if not ok then warn("List ODS fail:", name, pages) return end
+	repeat
+		for _, item in ipairs(pages:GetCurrentPage()) do
+			local key = item.key
+			local rOk, rErr = pcall(function() ods:RemoveAsync(key) end)
+			if rOk then print("[ODS] XÓA", name.."/"..key) else warn("[ODS] LỖI", name, key, rErr) end
+			task.wait()
+		end
+	until pages.IsFinished or (pcall(function() pages:AdvanceToNextPageAsync() end) and false)
 end
 
-print("Hoàn tất xoá toàn bộ dữ liệu và Workspace.")
+-- Liệt kê tất cả DataStore trong experience rồi xoá sạch
+local stores = {}
+do
+	local ok, pages = pcall(function() return DSS:ListDataStoresAsync() end)
+	if not ok then error("Không liệt kê được DataStore. Bật 'Enable Studio Access to API' rồi thử lại.") end
+	repeat
+		for _, info in ipairs(pages:GetCurrentPage()) do table.insert(stores, info.Name) end
+	until pages.IsFinished or (pcall(function() pages:AdvanceToNextPageAsync() end) and false)
+end
+
+if #stores == 0 then
+	warn("Không tìm thấy DataStore nào.")
+else
+	print("Tìm thấy:", table.concat(stores, ", "))
+	for _, n in ipairs(stores) do wipeDS(n); wipeODS(n) end
+	print("=== HOÀN TẤT: MỌI DATASTORE ĐÃ BỊ XOÁ VĨNH VIỄN ===")
+end
