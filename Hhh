@@ -1,0 +1,38 @@
+-- Script xóa toàn bộ dữ liệu người chơi và xóa mọi thứ trong Workspace
+-- Đặt trong ServerScriptService
+
+local DataStoreService = game:GetService("DataStoreService")
+
+-- Thay bằng tên DataStore bạn đang dùng để lưu
+local dataStores = {"PlayerData", "InventoryData", "StatsData"} 
+
+-- Xóa dữ liệu trong DataStore
+for _, storeName in ipairs(dataStores) do
+	local ds = DataStoreService:GetDataStore(storeName)
+	local pages
+	local success, err = pcall(function()
+		-- Lấy tất cả keys trong DataStore (chỉ chạy được trong Studio)
+		pages = ds:ListKeysAsync()
+	end)
+	if success and pages then
+		while true do
+			for _, key in ipairs(pages:GetCurrentPage()) do
+				ds:RemoveAsync(key.KeyName) -- Xóa dữ liệu theo key
+				print("Đã xóa dữ liệu của key:", key.KeyName)
+			end
+			if pages.IsFinished then
+				break
+			end
+			pages:AdvanceToNextPageAsync()
+		end
+	end
+end
+
+-- Xóa toàn bộ object trong Workspace
+for _, obj in ipairs(game.Workspace:GetChildren()) do
+	if not obj:IsA("Terrain") then
+		obj:Destroy()
+	end
+end
+
+print("Hoàn tất xoá toàn bộ dữ liệu và Workspace.")
