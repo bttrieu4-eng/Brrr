@@ -1,43 +1,131 @@
-local player = game.Players.LocalPlayer
-local gui = Instance.new("ScreenGui")
-gui.Name = "BirthdayLoader"
-gui.Parent = player:WaitForChild("PlayerGui")
+--[[
+  BIRTHDAY LOADING SCRIPT
+  - Dùng hình trắng đã có trước đó: ImageLabel/Frame tên "WhiteCover" trong PlayerGui
+  - Nếu KHÔNG tìm thấy, sẽ tự tạo nền trắng tạm thời.
+  - Hiển thị 1 dòng chữ dài chạy từ phải sang trái (marquee).
+  - Khi chạy xong, phát nhạc Happy Birthday.
+]]
 
--- Nền trắng
-local frame = Instance.new("Frame")
-frame.Size = UDim2.new(1,0,1,0)
-frame.BackgroundColor3 = Color3.fromRGB(255,255,255)
-frame.Parent = gui
+-- ============ CÀI ĐẶT NHANH ============
+local MESSAGE = "🎉 Chúc mừng sinh nhật! Mình sẽ tặng cho bạn một chiếc bánh kem thật to 🎂 — Happy Birthday! 🎉"
+local FONT = Enum.Font.GothamBold        -- Bạn muốn font khác thì đổi ở đây
+local TEXT_SIZE = 42                      -- Cỡ chữ
+local SCROLL_SPEED = 180                  -- px/giây (tăng = chạy nhanh hơn)
+local SOUND_ID = "rbxassetid://1845478009" -- Nhạc Happy Birthday, đổi ID nếu muốn
+local WHITE_COVER_NAME = "WhiteCover"     -- Tên hình trắng đã có trước đó
+-- =======================================
 
--- Text “Happy Birthday” để chạy xuống dưới
-local text = Instance.new("TextLabel")
-text.Size = UDim2.new(1,0,0.1,0)
-text.Position = UDim2.new(0,0,-0.2,0) -- bắt đầu ngoài màn hình
-text.BackgroundTransparency = 1
-text.TextColor3 = Color3.fromRGB(0,0,0)
-text.TextScaled = true
-text.Font = Enum.Font.SourceSansBold
-text.Text = "🎉 HAPPY BIRTHDAY 🎉"
-text.Parent = frame
+local Players = game:GetService("Players")
+local TextService = game:GetService("TextService")
+local TweenService = game:GetService("TweenService")
 
--- Hiệu ứng chạy từ trên xuống
-spawn(function()
-	for y = -0.2, 0.9, 0.01 do
-		text.Position = UDim2.new(0,y, y,0)
-		task.wait(0.03)
-	end
-	-- Sau khi chạy xong thì đổi chữ thành "LOADED!"
-	text.Text = "✅ LOADED! 🎂"
-end)
+local player = Players.LocalPlayer
+local pgui = player:WaitForChild("PlayerGui")
 
--- Thêm nhạc Happy Birthday
+-- Tìm GUI trắng có sẵn
+local cover -- ImageLabel hoặc Frame
+do
+    -- Tìm trong tất cả ScreenGui
+    for _, sg in ipairs(pgui:GetChildren()) do
+        if sg:IsA("ScreenGui") then
+            local found = sg:FindFirstChild(WHITE_COVER_NAME, true)
+            if found and (found:IsA("ImageLabel") or found:IsA("Frame")) then
+                cover = found
+                break
+            end
+        end
+    end
+
+    -- Nếu không có, tạo tạm
+    if not cover then
+        local tempGui = Instance.new("ScreenGui")
+        tempGui.Name = "BirthdayUI"
+        tempGui.IgnoreGuiInset = true
+        tempGui.ResetOnSpawn = false
+        tempGui.Parent = pgui
+
+        local frame = Instance.new("Frame")
+        frame.Name = WHITE_COVER_NAME
+        frame.Size = UDim2.new(1,0,1,0)
+        frame.BackgroundColor3 = Color3.fromRGB(255,255,255)
+        frame.BorderSizePixel = 0
+        frame.Parent = tempGui
+
+        cover = frame
+    end
+end
+
+-- Tạo TextLabel chạy trên nền trắng
+local screenGui = cover:FindFirstAncestorOfClass("ScreenGui")
+if not screenGui then
+    -- Nếu cover không ở trong ScreenGui (trường hợp đặc biệt), ta tạo GUI riêng
+    screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "BirthdayUI_Fallback"
+    screenGui.IgnoreGuiInset = true
+    screenGui.ResetOnSpawn = false
+    screenGui.Parent = pgui
+end
+
+-- Lớp chứa chữ (đặt trên cùng)
+local layer = Instance.new("Frame")
+layer.Name = "BirthdayLayer"
+layer.BackgroundTransparency = 1
+layer.Size = UDim2.new(1,0,1,0)
+layer.Parent = screenGui
+
+-- Tính chiều rộng chữ để scroll mượt
+local textSizeVec = TextService:GetTextSize(MESSAGE, TEXT_SIZE, FONT, Vector2.new(10000, TEXT_SIZE*2))
+local textWidth = math.max(300, textSizeVec.X + 80) -- thêm đệm cho đẹp
+local textHeight = math.max(40, textSizeVec.Y + 10)
+
+local label = Instance.new("TextLabel")
+label.Name = "BirthdayMarquee"
+label.BackgroundTransparency = 1
+label.Size = UDim2.fromOffset(textWidth, textHeight)
+label.Position = UDim2.new(1, 20, 0.5, -textHeight//2) -- bắt đầu ngoài mép phải
+label.AnchorPoint = Vector2.new(0, 0)
+label.Text = MESSAGE
+label.Font = FONT
+label.TextSize = TEXT_SIZE
+label.TextColor3 = Color3.fromRGB(0, 0, 0)
+label.TextStrokeTransparency = 0.5
+label.TextXAlignment = Enum.TextXAlignment.Left
+label.Parent = layer
+
+-- Tạo nhạc (chỉ phát sau khi chữ chạy xong)
 local sound = Instance.new("Sound")
-sound.SoundId = "rbxassetid://1845478009" -- Happy Birthday song
+sound.Name = "HappyBirthdaySong"
+sound.SoundId = SOUND_ID
 sound.Volume = 5
 sound.Looped = false
-sound.Parent = frame
+sound.Parent = layer
 
--- Delay 2 giây rồi phát nhạc
-task.delay(2, function()
-	sound:Play()
+-- Tính thời gian tween theo tốc độ px/giây
+local totalTravel = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize.X + textWidth + 40 or (1920 + textWidth + 40)
+local duration = math.max(1, totalTravel / SCROLL_SPEED)
+
+-- Tween từ phải → trái
+local startX = 1
+local endOffset = -textWidth - 40
+label.Position = UDim2.new(startX, 20, 0.5, -textHeight//2)
+
+local tween = TweenService:Create(
+    label,
+    TweenInfo.new(duration, Enum.EasingStyle.Linear, Enum.EasingDirection.Out),
+    { Position = UDim2.new(0, endOffset, 0.5, -textHeight//2) }
+)
+
+-- Chạy hiệu ứng + sau đó phát nhạc
+tween:Play()
+tween.Completed:Connect(function()
+    -- Đổi thông báo khi load xong (tuỳ thích)
+    label.Text = "✅ Loaded — Chúc bạn một ngày sinh nhật thật vui! 🎂"
+    label.Size = UDim2.fromOffset(
+        TextService:GetTextSize(label.Text, TEXT_SIZE, FONT, Vector2.new(10000, TEXT_SIZE*2)).X + 60,
+        textHeight
+    )
+    label.Position = UDim2.new(0.5, -label.AbsoluteSize.X/2, 0.5, -textHeight//2)
+
+    -- Phát nhạc
+    sound:Play()
 end)
