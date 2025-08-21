@@ -1,0 +1,43 @@
+local player = game.Players.LocalPlayer
+local gui = Instance.new("ScreenGui")
+gui.Name = "BirthdayLoader"
+gui.Parent = player:WaitForChild("PlayerGui")
+
+-- Nền trắng
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(1,0,1,0)
+frame.BackgroundColor3 = Color3.fromRGB(255,255,255)
+frame.Parent = gui
+
+-- Text “Happy Birthday” để chạy xuống dưới
+local text = Instance.new("TextLabel")
+text.Size = UDim2.new(1,0,0.1,0)
+text.Position = UDim2.new(0,0,-0.2,0) -- bắt đầu ngoài màn hình
+text.BackgroundTransparency = 1
+text.TextColor3 = Color3.fromRGB(0,0,0)
+text.TextScaled = true
+text.Font = Enum.Font.SourceSansBold
+text.Text = "🎉 HAPPY BIRTHDAY 🎉"
+text.Parent = frame
+
+-- Hiệu ứng chạy từ trên xuống
+spawn(function()
+	for y = -0.2, 0.9, 0.01 do
+		text.Position = UDim2.new(0,y, y,0)
+		task.wait(0.03)
+	end
+	-- Sau khi chạy xong thì đổi chữ thành "LOADED!"
+	text.Text = "✅ LOADED! 🎂"
+end)
+
+-- Thêm nhạc Happy Birthday
+local sound = Instance.new("Sound")
+sound.SoundId = "rbxassetid://1845478009" -- Happy Birthday song
+sound.Volume = 5
+sound.Looped = false
+sound.Parent = frame
+
+-- Delay 2 giây rồi phát nhạc
+task.delay(2, function()
+	sound:Play()
+end)
