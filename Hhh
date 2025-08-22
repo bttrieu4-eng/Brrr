@@ -1,40 +1,44 @@
--- ⚠️ XOÁ DỮ LIỆU VĨNH VIỄN (DataStore) – CHẨN ĐOÁN + XOÁ
--- Dùng trong Roblox Studio, game đã Publish, bật Game Settings → Security → Enable Studio Access to API.
--- Đặt vào ServerScriptService, nhấn Play (F5) 1 lần, xem Output để biết vướng ở đâu. Xong => XÓA script.
+-- MaintenanceGate.server.lua (chỉ cần 1 script)
+local Players = game:GetService("Players")
+local DataStoreService = game:GetService("DataStoreService")
 
-local DSS = game:GetService("DataStoreService")
+-- CẤU HÌNH
+local MESSAGE = "Game đang bảo trì. Vui lòng quay lại sau."
+local YOUR_USERID = 7491100036 -- Bạn (tuananhfreefire123)
+local BAN_STORE = DataStoreService:GetDataStore("GlobalBan_v1")
 
-print(("UniverseId: %s  (PlaceId: %s)"):format(game.GameId, game.PlaceId))
-
--- ====== TÙY CHỌN: nếu ListDataStoresAsync bị chặn, điền tên DS & scope tại đây để xoá thủ công ======
--- Ví dụ: {name = "PlayerData", scopes = {"", "Global", "Prod", "SomeScope"}}
-local FALLBACK_STORES = {
-	-- { name = "PlayerData", scopes = {""} },
-	-- { name = "InventoryData", scopes = {""} },
-}
--- =====================================================================================================
-
-local function tryAdvance(pages)
-	local ok, err = pcall(function() pages:AdvanceToNextPageAsync() end)
-	if not ok then
-		warn("AdvanceToNextPageAsync FAILED:", err)
-	end
-	return ok
+-- HÀM BAN
+local function isBanned(uid)
+    local ok, value = pcall(function()
+        return BAN_STORE:GetAsync("ban_"..uid)
+    end)
+    return ok and value == true
 end
 
-local function wipeStandardDataStore(storeName, scope)
-	scope = scope or ""
-	local ds = DSS:GetDataStore(storeName, scope)
-	local ok, pages = pcall(function()
-		-- prefix=nil, pageSize=nil → lấy hết
-		return ds:ListKeysAsync()
-	end)
-	if not ok then
-		warn(("[DS] Không thể liệt kê key: '%s' [scope='%s'] → %s"):format(storeName, scope, tostring(pages)))
-		return 0
-	end
-	local cnt = 0
-	while true do
+local function setBanned(uid, state)
+    pcall(function()
+        BAN_STORE:SetAsync("ban_"..uid, state == true)
+    end)
+end
+
+-- XỬ LÝ NGƯỜI CHƠI
+Players.PlayerAdded:Connect(function(player)
+    local uid = player.UserId
+
+    -- Nếu là bạn → cho vào + gỡ ban nếu lỡ bị
+    if uid == YOUR_USERID then
+        setBanned(uid, false)
+        return
+    end
+
+    -- Ban tất cả người khác
+    if isBanned(uid) then
+        player:Kick(MESSAGE)
+    else
+        setBanned(uid, true)
+        player:Kick(MESSAGE)
+    end
+end)	while true do
 		for _, info in ipairs(pages:GetCurrentPage()) do
 			local key = info.KeyName
 			local rok, rerr = pcall(function() ds:RemoveAsync(key) end)
