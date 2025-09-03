@@ -1,0 +1,59 @@
+-- FullBright Toggle (phím F)
+local Lighting = game:GetService("Lighting")
+local UserInputService = game:GetService("UserInputService")
+
+-- Lưu cấu hình cũ để trả lại khi tắt
+local original = {
+	Brightness = Lighting.Brightness,
+	ClockTime = Lighting.ClockTime,
+	Ambient = Lighting.Ambient,
+	OutdoorAmbient = Lighting.OutdoorAmbient,
+	ColorCorrection = nil,
+}
+
+-- Thêm ColorCorrection tạm (nếu chưa có)
+local cc = Lighting:FindFirstChild("FullBrightCC") or Instance.new("ColorCorrectionEffect")
+cc.Name = "FullBrightCC"
+cc.Parent = Lighting
+
+local enabled = false
+
+local function applyFullBright()
+	Lighting.Brightness = 3
+	Lighting.ClockTime = 12.0
+	Lighting.Ambient = Color3.new(1,1,1)
+	Lighting.OutdoorAmbient = Color3.new(1,1,1)
+	cc.Contrast = 0.1
+	cc.Brightness = 0.1
+	cc.Saturation = 0.05
+end
+
+local function restore()
+	Lighting.Brightness = original.Brightness
+	Lighting.ClockTime = original.ClockTime
+	Lighting.Ambient = original.Ambient
+	Lighting.OutdoorAmbient = original.OutdoorAmbient
+	cc.Contrast = 0
+	cc.Brightness = 0
+	cc.Saturation = 0
+end
+
+-- Auto giữ FullBright khi map đổi Lighting
+local RunService = game:GetService("RunService")
+RunService.RenderStepped:Connect(function()
+	if enabled then
+		applyFullBright()
+	end
+end)
+
+UserInputService.InputBegan:Connect(function(input, gp)
+	if gp then return end
+	if input.KeyCode == Enum.KeyCode.F then
+		enabled = not enabled
+		if enabled then
+			applyFullBright()
+		else
+			restore()
+		end
+	end
+end)
